@@ -78,14 +78,13 @@ exports.callGitHub = functions.https.onRequest((req, res) => {
           body: body
         };
       httpVerb = "POST";
-      responseMessage = "The " + title + " issue was successfully created. <br/><br/>" +
+      responseMessage = "Your issue was successfully created. <br/><br/>" +
         "Please click on the following link to view the issue: <a href=\"" + 
         domainAddress + orgName + "/" + repoName + "/issues\"" + " target=\"blank\">" + title +  "</a>";
     }
     let promise = gitHubIntegrator.callGitHub(endpoint, httpVerb, data);
     promise.then(function(result) {
-      console.log("success", result);
-      console.log("message", result.message);
+      console.log("success");
       if (result.message === undefined){
         result.htmlDisplayMessage = responseMessage;
         res.status(200).send(result);
