@@ -24,7 +24,11 @@ exports.callGitHub = functions.https.onRequest((req, res) => {
     if(command === "createOrg"){
       endpoint = "/admin/organizations";
       let orgName = parameters["orgName"];
-      data = gitHubIntegrator.getDataForCreateOrg(parameters);
+      data = {
+        login: parameters["orgName"],
+        profile_name: parameters["orgDisplayName"],
+        admin: functions.config().github.username
+      }
       httpVerb = "POST";
       responseMessage = "The " + orgName + " organization was successfully created. <br/><br/>" +
       "Please click on the following link to view the organization: <a href=\"" + 
@@ -60,8 +64,23 @@ exports.callGitHub = functions.https.onRequest((req, res) => {
           };
         httpVerb = "POST";
         responseMessage = "The " + username + " account was successfully created. <br/><br/>" +
-        "Please click on the following link to view the user profile: <a href=\"" + 
-        domainAddress + username + "\"" + " target=\"blank\">" + username + "</a>";
+          "Please click on the following link to view the user profile: <a href=\"" + 
+          domainAddress + username + "\"" + " target=\"blank\">" + username + "</a>";
+    }
+    else if(command === "createIssue"){
+      let repoName = parameters["repoName"];
+      let body = parameters["description"];
+      let title = parameters["title"];
+      let orgName = parameters["orgName"];
+      endpoint = "/repos/" + orgName + "/" + repoName + "/issues";
+      data = {
+          title: title,
+          body: body
+        };
+      httpVerb = "POST";
+      responseMessage = "The " + title + " issue was successfully created. <br/><br/>" +
+        "Please click on the following link to view the issue: <a href=\"" + 
+        domainAddress + orgName + "/" + repoName + "/issues\"" + " target=\"blank\">" + title +  "</a>";
     }
     let promise = gitHubIntegrator.callGitHub(endpoint, httpVerb, data);
     promise.then(function(result) {
@@ -111,23 +130,5 @@ let gitHubIntegrator = {
           }
       })
     }))
-  },
-  getDataForCreateOrg: function(parameters){
-    return data = {
-      login: parameters["orgName"],
-      profile_name: parameters["orgDisplayName"],
-      admin: functions.config().github.username
-    }
-  },
-  isValidResponse: function(message){
-    let invalidResponseTypes = ["Validation Failed", "Not Found"];
-    isValid = "true";
-    for(index in invalidResponseTypes){
-      let currentInvalidResponse = invalidResponseTypes[index];
-      if(message === currentInvalidResponse){
-        isValid = false;
-      }
-    }
-    return isValid;
   }
 }
