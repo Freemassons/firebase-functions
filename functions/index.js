@@ -1,114 +1,139 @@
 // The Cloud Functions for Firebase SDK to create Cloud Functions and setup triggers.
 const functions = require('firebase-functions');
 
+// All CORS
 const cors = require('cors')({
   origin: true
 });
 
 var request = require('request');
+var syncRequest = require('sync-request');
 
 // The Firebase Admin SDK to access the Firebase Realtime Database.
 const admin = require('firebase-admin');
 admin.initializeApp();
 
+// global variables needed for Git integration
+let command = ""
+let repoName = "";
+let orgName = "";
+let issueDescription = "";
+let issueTitle = "";
+let username = "";
+let email = "";
+let orgDisplayName = "";
+let endpoint = "";
+let httpVerb = "";
+let responseMessage = "";
+let role = "";
+let data = {};
+
 exports.callGitHub = functions.https.onRequest((req, res) => {
   return cors(req, res, () => {
+    let orchestrationRequired = false;
     let body = req.body;
-    let command = body.command;
-    let endpoint = "";
-    let httpVerb = "";
+    command = body.command;
     let parameters = body.parameters;
-    let responseMessage = "";
-    let data = {};
-    let domainAddress = "http://35.175.177.59/"
+    repoName = parameters.repoName;
+    orgName =  parameters.orgName;
+    issueDescription = parameters.description;
+    issueTitle = parameters.title;
+    username = parameters.username;
+    email = parameters.email;
+    orgDisplayName = parameters.orgDisplayName;
+    role = parameters.role;
+
     if(command === "createOrg"){
-      endpoint = "/admin/organizations";
-      let orgName = parameters["orgName"];
-      data = {
-        login: parameters["orgName"],
-        profile_name: parameters["orgDisplayName"],
-        admin: functions.config().github.username
-      }
-      httpVerb = "POST";
-      responseMessage = "The " + orgName + " organization was successfully created. <br/><br/>" +
-      "Please click on the following link to view the organization: <a href=\"" + 
-      domainAddress + orgName + "\"" + " target=\"blank\">" + orgName + "</a>";
+      gitHubIntegrator.createOrg();
     }
     else if(command === "createRepo"){
-      let repoName = parameters["repoName"];
-      let orgName = parameters["orgName"];
-      endpoint = "/orgs/" + orgName + "/repos";
-      data = {name: repoName, auto_init: true};
-      httpVerb = "POST";
-      responseMessage = "The " + repoName + " was successfully added to the " + orgName + " organzation. <br/><br/>" +
-      "Please click on the following link to view the repository: <a href=\"" + 
-      domainAddress + orgName + "/" + repoName + "\"" + " target=\"blank\">" + repoName + "</a>";
+      gitHubIntegrator.createRepo();
     }
     else if(command === "addMember"){
-      let userName = parameters["username"];
-      let orgName = parameters["orgName"];
-      endpoint = "/orgs/" + orgName + "/memberships/" + userName;
-      data = {role: parameters["role"]};
-      httpVerb = "PUT";
-      responseMessage = userName + " was successfully added to the " + orgName + "organization. <br/><br/>" +
-        "Please click on the following link to view the members of the organization: <a href=\"" + 
-        domainAddress + "orgs/" + orgName + "/people\"" + " target=\"blank\">Organization Membership</a>";
+      gitHubIntegrator.addMember();
     }
     else if(command === "createUser"){
-        endpoint = "/admin/users";
-        let username= parameters["username"];
-        let email= parameters["email"];
-        data = {
-            login: username,
-            email: email
-          };
-        httpVerb = "POST";
-        responseMessage = "The " + username + " account was successfully created. <br/><br/>" +
-          "Please click on the following link to view the user profile: <a href=\"" + 
-          domainAddress + username + "\"" + " target=\"blank\">" + username + "</a>";
+      gitHubIntegrator.createUser();
     }
     else if(command === "createIssue"){
-      let repoName = parameters["repoName"];
-      let body = parameters["description"];
-      let title = parameters["title"];
-      let orgName = parameters["orgName"];
-      endpoint = "/repos/" + orgName + "/" + repoName + "/issues";
-      data = {
-          title: title,
-          body: body
-        };
-      httpVerb = "POST";
-      responseMessage = "Your issue was successfully created. <br/><br/>" +
-        "Please click on the following link to view the issue: <a href=\"" + 
-        domainAddress + orgName + "/" + repoName + "/issues\"" + " target=\"blank\">" + title +  "</a>";
+      gitHubIntegrator.createIssue();
     }
-    let promise = gitHubIntegrator.callGitHub(endpoint, httpVerb, data);
-    promise.then(function(result) {
-      console.log("success");
-      if (result.message === undefined){
-        result.htmlDisplayMessage = responseMessage;
-        res.status(200).send(result);
+    else if(command === "fullOnboard"){
+      orchestrationRequired = true;
+      gitHubIntegrator.fullOnboard();
+    }
+    else if(command === "existingOnboard"){
+      orchestrationRequired = true;
+      createUser = false;
+      gitHubIntegrator.existingOnboard();
+    }
+
+    if(!orchestrationRequired){
+      let promise = gitHubIntegrator.callGitHubAsync();
+      promise.then(function(result) {
+        console.log(result);
+        if (result.message === undefined){
+          console.log("success");
+          result.htmlDisplayMessage = responseMessage;
+          res.status(200).send(result);
+        }
+        else{
+          console.log("validation failed", result);
+          res.status(409).send(result);
+        }
+      }, function(error) {
+        console.log("error", error);
+        res.status(520).send(error);
+      }).catch(message => {
+        console.log("catch", message);
+        res.status(520).send("Sorry for the inconvenience, but we are having trouble processing your request");
+      })
+    }
+    else{
+      let response = "";
+      //synchronous in case we need to wait on the previous call to finish
+      if(command === "fullOnboard"){
+        gitHubIntegrator.createUser();
+        response = gitHubIntegrator.callGitHubSynchronous();
+      }
+
+      if(response.statusCode.toString().startsWith("2")){
+        gitHubIntegrator.createOrg();
+        response = gitHubIntegrator.callGitHubSynchronous();
+      }
+
+      if(response.statusCode.toString().startsWith("2")){
+        gitHubIntegrator.addMember();
+        response = gitHubIntegrator.callGitHubSynchronous();
+      }
+
+      if(response.statusCode.toString().startsWith("2")){
+        gitHubIntegrator.createRepo();
+        response = gitHubIntegrator.callGitHubSynchronous();
+      }
+      if(response.statusCode.toString().startsWith("2")){
+        if(command === "fullOnboard"){
+          gitHubIntegrator.fullOnboard();
+        }
+        else{
+          gitHubIntegrator.existingOnboard();
+        }
+        res.status(200).send(responseMessage);
       }
       else{
-        console.log("validation failed", result);
-        res.status(409).send(result);
+        res.status(response.statusCode).send(response.headers.status)
       }
-    }, function(error) {
-      console.log("error", error);
-      res.status(520).send(error);
-    }).catch(message => {
-      console.log("catch", message);
-      res.status(520).send("Sorry for the inconvenience, but we are having trouble processing your request");
-    })
+    }
   });
 });
 
 let gitHubIntegrator = {
-  username: functions.config().github.username,
-  password: functions.config().github.password,
-  baseURL: "35.175.177.59/api/v3",
-  callGitHub: function(endpoint, httpVerb, data){
-    let url = "https://" + this.username + ":" + gitHubIntegrator.password + "@" + this.baseURL + endpoint;
+  domainAddress: "https://github.freemasonsnh.com/",
+  baseURL: "github.freemasonsnh.com/api/v3",
+  siteAdminUsername: functions.config().github.username,
+  siteAdminPassword: functions.config().github.password,
+  callGitHubAsync: function(){
+    let url = "https://" + this.siteAdminUsername + ":" + this.siteAdminPassword + "@" + this.baseURL + endpoint;
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = 0;
     let options = {
       method: httpVerb,
@@ -129,5 +154,71 @@ let gitHubIntegrator = {
           }
       })
     }))
+  },
+  callGitHubSynchronous: function(){
+    let url = "https://" + this.siteAdminUsername + ":" + this.siteAdminPassword + "@" + this.baseURL + endpoint;
+    // wait for each call to finish
+    console.log("data", data);
+      var response = syncRequest(httpVerb, url, {
+        json: data
+      });
+      console.log("callGitHubSynchronous", response);
+      return response;
+  },
+  createOrg: function(){
+    endpoint = "/admin/organizations";
+    data = {
+      login: orgName,
+      profile_name: orgDisplayName,
+      admin: this.siteAdminUsername
+    }
+    httpVerb = "POST";
+    responseMessage = "The " + orgName + " organization was successfully created. <br/><br/>" +
+    "Please click on the following link to view the organization: <a href=\"" + 
+    this.domainAddress + orgName + "\"" + " target=\"blank\">" + orgName + "</a>"
+  },
+  createRepo: function(){
+    endpoint = "/orgs/" + orgName + "/repos";
+    data = {name: repoName, auto_init: true};
+    httpVerb = "POST";
+    responseMessage = "The " + repoName + " was successfully added to the " + orgName + " organization. <br/><br/>" +
+    "Please click on the following link to view the repository: <a href=\"" + 
+    this.domainAddress + orgName + "/" + repoName + "\"" + " target=\"blank\">" + repoName + "</a>";
+  },
+  addMember: function(){
+    endpoint = "/orgs/" + orgName + "/memberships/" + username;
+    data = {role: role};
+    httpVerb = "PUT";
+    responseMessage = username + " was successfully added to the " + orgName + " organization. <br/><br/>" +
+      "Please click on the following link to view the members of the organization: <a href=\"" + 
+      this.domainAddress + "orgs/" + orgName + "/people\"" + " target=\"blank\">Organization Membership</a>";
+  },
+  createUser: function(){
+    endpoint = "/admin/users";
+    data = {login: username, email: email};
+    httpVerb = "POST";
+    responseMessage = "The " + username + " account was successfully created. <br/><br/>" +
+      "Please click on the following link to view the user profile: <a href=\"" + 
+      this.domainAddress + username + "\"" + " target=\"blank\">" + username + "</a>";
+  },
+  createIssue: function(){
+    endpoint = "/repos/" + orgName + "/" + repoName + "/issues";
+    data = {title: issueTitle, body: issueDescription};
+    httpVerb = "POST";
+    responseMessage = "Your issue was successfully created. <br/><br/>" +
+      "Please click on the following link to view the issue: <a href=\"" + 
+      this.domainAddress + orgName + "/" + repoName + "/issues\"" + " target=\"blank\">" + issueTitle +  "</a>";
+  },
+  fullOnboard: function(){
+    responseMessage = "The " + username + " account was sucessfully created and associated to the newly created " 
+    + repoName + " repository and the newly created " + orgName + " organization. <br/><br/>" +
+    "Please click on the following link to view the user profile: <a href=\"" + 
+    this.domainAddress + "orgs/" + orgName + "/people\"" + " target=\"blank\">" + username + "</a>";
+  },
+  existingOnboard: function(){
+    responseMessage = "The " + username + " account was sucessfully associated to the newly created " 
+    + repoName + " repository and the newly created " + orgName + " organization. <br/><br/>" +
+    "Please click on the following link to view the user profile: <a href=\"" + 
+    this.domainAddress + "orgs/" + orgName + "/people\"" + " target=\"blank\">" + username + "</a>";
   }
 }
