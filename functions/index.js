@@ -8,6 +8,7 @@ const cors = require('cors')({
 
 var request = require('request');
 var syncRequest = require('sync-request');
+var requestPromise = require('request-promise');
 
 // The Firebase Admin SDK to access the Firebase Realtime Database.
 const admin = require('firebase-admin');
@@ -162,7 +163,6 @@ let gitHubIntegrator = {
       var response = syncRequest(httpVerb, url, {
         json: data
       });
-      console.log("callGitHubSynchronous", response);
       return response;
   },
   createOrg: function(){
@@ -189,8 +189,7 @@ let gitHubIntegrator = {
     endpoint = "/orgs/" + orgName + "/memberships/" + username;
     data = {role: role};
     httpVerb = "PUT";
-    responseMessage = username + " was successfully added to the " + orgName + " organization. <br/><br/>" +
-      "Please click on the following link to view the members of the organization: <a href=\"" + 
+    responseMessage = "Please click on the following link to view the members of the organization: <a href=\"" + 
       this.domainAddress + "orgs/" + orgName + "/people\"" + " target=\"blank\">Organization Membership</a>";
   },
   createUser: function(){
