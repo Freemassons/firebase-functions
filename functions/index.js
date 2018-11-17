@@ -7,8 +7,6 @@ const cors = require('cors')({
 });
 
 var request = require('request');
-var syncRequest = require('sync-request');
-var requestPromise = require('request-promise');
 
 // The Firebase Admin SDK to access the Firebase Realtime Database.
 const admin = require('firebase-admin');
@@ -90,41 +88,6 @@ exports.callGitHub = functions.https.onRequest((req, res) => {
         res.status(520).send("Sorry for the inconvenience, but we are having trouble processing your request");
       })
     }
-    else{
-      let response = "";
-      //synchronous in case we need to wait on the previous call to finish
-      if(command === "fullOnboard"){
-        gitHubIntegrator.createUser();
-        response = gitHubIntegrator.callGitHubSynchronous();
-      }
-
-      if(response.statusCode.toString().startsWith("2")){
-        gitHubIntegrator.createOrg();
-        response = gitHubIntegrator.callGitHubSynchronous();
-      }
-
-      if(response.statusCode.toString().startsWith("2")){
-        gitHubIntegrator.addMember();
-        response = gitHubIntegrator.callGitHubSynchronous();
-      }
-
-      if(response.statusCode.toString().startsWith("2")){
-        gitHubIntegrator.createRepo();
-        response = gitHubIntegrator.callGitHubSynchronous();
-      }
-      if(response.statusCode.toString().startsWith("2")){
-        if(command === "fullOnboard"){
-          gitHubIntegrator.fullOnboard();
-        }
-        else{
-          gitHubIntegrator.existingOnboard();
-        }
-        res.status(200).send(responseMessage);
-      }
-      else{
-        res.status(response.statusCode).send(response.headers.status)
-      }
-    }
   });
 });
 
@@ -155,15 +118,6 @@ let gitHubIntegrator = {
           }
       })
     }))
-  },
-  callGitHubSynchronous: function(){
-    let url = "https://" + this.siteAdminUsername + ":" + this.siteAdminPassword + "@" + this.baseURL + endpoint;
-    // wait for each call to finish
-    console.log("data", data);
-      var response = syncRequest(httpVerb, url, {
-        json: data
-      });
-      return response;
   },
   createOrg: function(){
     endpoint = "/admin/organizations";
